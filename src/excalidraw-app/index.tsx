@@ -76,7 +76,8 @@ import {
 import { updateStaleImageStatuses } from "./data/FileManager";
 import { newElementWith } from "../element/mutateElement";
 import { isInitializedImageElement } from "../element/typeChecks";
-import { loadFilesFromFirebase } from "./data/firebase";
+// import { loadFilesFromFirebase } from "./data/firebase";
+import { getStorageBackend } from "./data/config";
 import { LocalData } from "./data/LocalData";
 import { isBrowserStorageStateNewer } from "./data/tabSync";
 import clsx from "clsx";
@@ -331,18 +332,34 @@ const ExcalidrawWrapper = () => {
           }, [] as FileId[]) || [];
 
         if (data.isExternalScene) {
-          loadFilesFromFirebase(
-            `${FIREBASE_STORAGE_PREFIXES.shareLinkFiles}/${data.id}`,
-            data.key,
-            fileIds,
-          ).then(({ loadedFiles, erroredFiles }) => {
-            excalidrawAPI.addFiles(loadedFiles);
-            updateStaleImageStatuses({
-              excalidrawAPI,
-              erroredFiles,
-              elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+          // loadFilesFromFirebase(
+          //   `${FIREBASE_STORAGE_PREFIXES.shareLinkFiles}/${data.id}`,
+          //   data.key,
+          //   fileIds,
+          // ).then(({ loadedFiles, erroredFiles }) => {
+          //   excalidrawAPI.addFiles(loadedFiles);
+          //   updateStaleImageStatuses({
+          //     excalidrawAPI,
+          //     erroredFiles,
+          //     elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+          getStorageBackend()
+            .then((storageBackend) => {
+              return storageBackend.loadFilesFromStorageBackend(
+                `${FIREBASE_STORAGE_PREFIXES.shareLinkFiles}/${data.id}`,
+                data.key,
+                fileIds,
+              );
+            })
+            .then(({ loadedFiles, erroredFiles }) => {
+              excalidrawAPI.addFiles(loadedFiles);
+              updateStaleImageStatuses({
+                excalidrawAPI,
+                erroredFiles,
+                elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+              });
+
             });
-          });
+          // });
         } else if (isInitialLoad) {
           if (fileIds.length) {
             LocalData.fileStorage
