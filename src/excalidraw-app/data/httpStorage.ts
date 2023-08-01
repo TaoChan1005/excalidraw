@@ -14,7 +14,8 @@ import { reconcileElements } from "../collab/reconciliation";
 import { decryptData } from "../../data/encryption";
 import { StoredScene } from "./StorageBackend";
 
-const HTTP_STORAGE_BACKEND_URL = process.env.REACT_APP_HTTP_STORAGE_BACKEND_URL;
+const HTTP_STORAGE_BACKEND_URL = import.meta.env.VITE_APP_HTTP_STORAGE_BACKEND_URL
+// process.env.REACT_APP_HTTP_STORAGE_BACKEND_URL;
 const SCENE_VERSION_LENGTH_BYTES = 4
 
 // There is a lot of intentional duplication with the firebase file
