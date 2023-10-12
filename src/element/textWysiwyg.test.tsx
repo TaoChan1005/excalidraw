@@ -1,5 +1,5 @@
 import ReactDOM from "react-dom";
-import ExcalidrawApp from "../excalidraw-app";
+import { Excalidraw } from "../packages/excalidraw/index";
 import { GlobalTestState, render, screen } from "../tests/test-utils";
 import { Keyboard, Pointer, UI } from "../tests/helpers/ui";
 import { CODES, KEYS } from "../keys";
@@ -17,7 +17,6 @@ import {
 } from "./types";
 import { API } from "../tests/helpers/api";
 import { mutateElement } from "./mutateElement";
-import { resize } from "../tests/utils";
 import { getOriginalContainerHeightFromCache } from "./textWysiwyg";
 
 // Unmount ReactDOM from root
@@ -41,7 +40,7 @@ describe("textWysiwyg", () => {
   describe("start text editing", () => {
     const { h } = window;
     beforeEach(async () => {
-      await render(<ExcalidrawApp />);
+      await render(<Excalidraw handleKeyboardGlobally={true} />);
       h.elements = [];
     });
 
@@ -243,7 +242,7 @@ describe("textWysiwyg", () => {
     });
 
     beforeEach(async () => {
-      await render(<ExcalidrawApp />);
+      await render(<Excalidraw handleKeyboardGlobally={true} />);
       //@ts-ignore
       h.app.refreshDeviceState(h.app.excalidrawContainerRef.current!);
 
@@ -477,7 +476,7 @@ describe("textWysiwyg", () => {
     const { h } = window;
 
     beforeEach(async () => {
-      await render(<ExcalidrawApp />);
+      await render(<Excalidraw handleKeyboardGlobally={true} />);
       h.elements = [];
 
       rectangle = UI.createElement("rectangle", {
@@ -953,11 +952,11 @@ describe("textWysiwyg", () => {
       editor.blur();
 
       // should center align horizontally and vertically by default
-      resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
+      UI.resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
       expect([h.elements[1].x, h.elements[1].y]).toMatchInlineSnapshot(`
         [
           85,
-          4.5,
+          4.999999999999986,
         ]
       `);
 
@@ -977,7 +976,7 @@ describe("textWysiwyg", () => {
       editor.blur();
 
       // should left align horizontally and bottom vertically after resize
-      resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
+      UI.resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
       expect([h.elements[1].x, h.elements[1].y]).toMatchInlineSnapshot(`
         [
           15,
@@ -999,11 +998,11 @@ describe("textWysiwyg", () => {
       editor.blur();
 
       // should right align horizontally and top vertically after resize
-      resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
+      UI.resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
       expect([h.elements[1].x, h.elements[1].y]).toMatchInlineSnapshot(`
         [
-          375,
-          -539,
+          374.99999999999994,
+          -535.0000000000001,
         ]
       `);
     });
@@ -1049,7 +1048,7 @@ describe("textWysiwyg", () => {
       expect(rectangle.height).toBe(75);
       expect(textElement.fontSize).toBe(20);
 
-      resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 50], {
+      UI.resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 50], {
         shift: true,
       });
       expect(rectangle.width).toBe(200);
@@ -1189,8 +1188,8 @@ describe("textWysiwyg", () => {
       updateTextEditor(editor, "Hello");
       editor.blur();
 
-      resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
-      expect(rectangle.height).toBe(156);
+      UI.resize(rectangle, "ne", [rectangle.x + 100, rectangle.y - 100]);
+      expect(rectangle.height).toBeCloseTo(155, 8);
       expect(getOriginalContainerHeightFromCache(rectangle.id)).toBe(null);
 
       mouse.select(rectangle);
@@ -1200,9 +1199,12 @@ describe("textWysiwyg", () => {
 
       await new Promise((r) => setTimeout(r, 0));
       editor.blur();
-      expect(rectangle.height).toBe(156);
+      expect(rectangle.height).toBeCloseTo(155, 8);
       // cache updated again
-      expect(getOriginalContainerHeightFromCache(rectangle.id)).toBe(156);
+      expect(getOriginalContainerHeightFromCache(rectangle.id)).toBeCloseTo(
+        155,
+        8,
+      );
     });
 
     it("should reset the container height cache when font properties updated", async () => {
@@ -1508,5 +1510,19 @@ describe("textWysiwyg", () => {
       expect(text.containerId).toBe(null);
       expect(text.text).toBe("Excalidraw");
     });
+  });
+
+  it("should bump the version of a labeled arrow when the label is updated", async () => {
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    const arrow = UI.createElement("arrow", {
+      width: 300,
+      height: 0,
+    });
+    await UI.editText(arrow, "Hello");
+    const { version } = arrow;
+
+    await UI.editText(arrow, "Hello\nworld!");
+
+    expect(arrow.version).toEqual(version + 1);
   });
 });
