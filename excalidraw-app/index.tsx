@@ -69,26 +69,26 @@ import {
 } from "./data/localStorage";
 import CustomStats from "./CustomStats";
 import {
-  restore,
-  restoreAppState,
-  RestoredDataState,
-} from "../src/data/restore";
+    restore,
+    restoreAppState,
+    RestoredDataState,
+  } from "../src/data/restore";
 import {
   ExportToExcalidrawPlus,
   exportToExcalidrawPlus,
 } from "./components/ExportToExcalidrawPlus";
 import { updateStaleImageStatuses } from "./data/FileManager";
 import { newElementWith } from "../src/element/mutateElement";
-import { isInitializedImageElement } from "../src/element/typeChecks";
+import { isInitializedImageElement } from "../element/typeChecks";
 import { loadFilesFromFirebase } from "./data/firebase";
 import { LocalData } from "./data/LocalData";
 import { isBrowserStorageStateNewer } from "./data/tabSync";
 import clsx from "clsx";
 import { reconcileElements } from "./collab/reconciliation";
 import {
-  parseLibraryTokensFromUrl,
-  useHandleLibrary,
-} from "../src/data/library";
+    parseLibraryTokensFromUrl,
+    useHandleLibrary,
+  } from "../src/data/library";
 import { AppMainMenu } from "./components/AppMainMenu";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
 import { AppFooter } from "./components/AppFooter";
