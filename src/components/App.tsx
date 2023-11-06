@@ -47,7 +47,7 @@ import {
   isEraserActive,
   isHandToolActive,
 } from "../appState";
-import { parseClipboard } from "../clipboard";
+import { PastedMixedContent, parseClipboard } from "../clipboard";
 import {
   APP_NAME,
   CURSOR_TYPE,
@@ -74,7 +74,6 @@ import {
   MQ_MAX_WIDTH_LANDSCAPE,
   MQ_MAX_WIDTH_PORTRAIT,
   MQ_RIGHT_SIDEBAR_MIN_WIDTH,
-  MQ_SM_MAX_WIDTH,
   POINTER_BUTTON,
   ROUNDNESS,
   SCROLL_TIMEOUT,
@@ -275,6 +274,7 @@ import {
   generateIdFromFile,
   getDataURL,
   getFileFromEvent,
+  ImageURLToFile,
   isImageFileHandle,
   isSupportedImageFile,
   loadSceneOrLibraryFromBlob,
@@ -365,6 +365,7 @@ import { isSidebarDockedAtom } from "./Sidebar/Sidebar";
 import { StaticCanvas, InteractiveCanvas } from "./canvases";
 import { Renderer } from "../scene/Renderer";
 import { ShapeCache } from "../scene/ShapeCache";
+import MermaidToExcalidraw from "./MermaidToExcalidraw";
 import { LaserToolOverlay } from "./LaserTool/LaserTool";
 import { LaserPathManager } from "./LaserTool/LaserPathManager";
 import {
@@ -373,16 +374,21 @@ import {
   resetCursor,
   setCursorForShape,
 } from "../cursor";
+import { Emitter } from "../emitter";
 
 const AppContext = React.createContext<AppClassProperties>(null!);
 const AppPropsContext = React.createContext<AppProps>(null!);
 
 const deviceContextInitialValue = {
-  isSmScreen: false,
-  isMobile: false,
+  viewport: {
+    isMobile: false,
+    isLandscape: false,
+  },
+  editor: {
+    isMobile: false,
+    canFitSidebar: false,
+  },
   isTouchScreen: false,
-  canDeviceFitSidebar: false,
-  isLandscape: false,
 };
 const DeviceContext = React.createContext<Device>(deviceContextInitialValue);
 DeviceContext.displayName = "DeviceContext";
@@ -433,6 +439,9 @@ export const useExcalidrawSetAppState = () =>
 export const useExcalidrawActionManager = () =>
   useContext(ExcalidrawActionManagerContext);
 
+const supportsResizeObserver =
+  typeof window !== "undefined" && "ResizeObserver" in window;
+
 let didTapTwice: boolean = false;
 let tappedTwiceTimer = 0;
 let isHoldingSpace: boolean = false;
@@ -469,7 +478,6 @@ class App extends React.Component<AppProps, AppState> {
   unmounted: boolean = false;
   actionManager: ActionManager;
   device: Device = deviceContextInitialValue;
-  detachIsMobileMqHandler?: () => void;
 
   private excalidrawContainerRef = React.createRef<HTMLDivElement>();
 
@@ -503,6 +511,30 @@ class App extends React.Component<AppProps, AppState> {
   lastViewportPosition = { x: 0, y: 0 };
 
   laserPathManager: LaserPathManager = new LaserPathManager(this);
+
+  onChangeEmitter = new Emitter<
+    [
+      elements: readonly ExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles,
+    ]
+  >();
+
+  onPointerDownEmitter = new Emitter<
+    [
+      activeTool: AppState["activeTool"],
+      pointerDownState: PointerDownState,
+      event: React.PointerEvent<HTMLElement>,
+    ]
+  >();
+
+  onPointerUpEmitter = new Emitter<
+    [
+      activeTool: AppState["activeTool"],
+      pointerDownState: PointerDownState,
+      event: PointerEvent,
+    ]
+  >();
 
   constructor(props: AppProps) {
     super(props);
@@ -567,6 +599,9 @@ class App extends React.Component<AppProps, AppState> {
         resetCursor: this.resetCursor,
         updateFrameRendering: this.updateFrameRendering,
         toggleSidebar: this.toggleSidebar,
+        onChange: (cb) => this.onChangeEmitter.on(cb),
+        onPointerDown: (cb) => this.onPointerDownEmitter.on(cb),
+        onPointerUp: (cb) => this.onPointerUpEmitter.on(cb),
       } as const;
       if (typeof excalidrawRef === "function") {
         excalidrawRef(api);
@@ -1150,7 +1185,7 @@ class App extends React.Component<AppProps, AppState> {
       <div
         className={clsx("excalidraw excalidraw-container", {
           "excalidraw--view-mode": this.state.viewModeEnabled,
-          "excalidraw--mobile": this.device.isMobile,
+          "excalidraw--mobile": this.device.editor.isMobile,
         })}
         style={{
           ["--ui-pointerEvents" as any]:
@@ -1188,7 +1223,6 @@ class App extends React.Component<AppProps, AppState> {
                       >
                         <LayerUI
                           canvas={this.canvas}
-                          interactiveCanvas={this.interactiveCanvas}
                           appState={this.state}
                           files={this.files}
                           setAppState={this.setAppState}
@@ -1205,7 +1239,6 @@ class App extends React.Component<AppProps, AppState> {
                             this.state.zenModeEnabled
                           }
                           UIOptions={this.props.UIOptions}
-                          onImageAction={this.onImageAction}
                           onExportImage={this.onExportImage}
                           renderWelcomeScreen={
                             !this.state.isLoading &&
@@ -1218,7 +1251,11 @@ class App extends React.Component<AppProps, AppState> {
                           isCollaborating={this.props.isCollaborating}
                         >
                           {this.props.children}
+                          {this.state.openDialog === "mermaid" && (
+                            <MermaidToExcalidraw />
+                          )}
                         </LayerUI>
+
                         <div className="excalidraw-textEditorContainer" />
                         <div className="excalidraw-contextMenuContainer" />
                         <div className="excalidraw-eye-dropper-container" />
@@ -1248,6 +1285,12 @@ class App extends React.Component<AppProps, AppState> {
                             top={this.state.contextMenu.top}
                             left={this.state.contextMenu.left}
                             actionManager={this.actionManager}
+                            onClose={(callback) => {
+                              this.setState({ contextMenu: null }, () => {
+                                this.focusContainer();
+                                callback?.();
+                              });
+                            }}
                           />
                         )}
                         <StaticCanvas
@@ -1619,20 +1662,62 @@ class App extends React.Component<AppProps, AppState> {
     });
   };
 
-  private refreshDeviceState = (container: HTMLDivElement) => {
-    const { width, height } = container.getBoundingClientRect();
+  private isMobileBreakpoint = (width: number, height: number) => {
+    return (
+      width < MQ_MAX_WIDTH_PORTRAIT ||
+      (height < MQ_MAX_HEIGHT_LANDSCAPE && width < MQ_MAX_WIDTH_LANDSCAPE)
+    );
+  };
+
+  private refreshViewportBreakpoints = () => {
+    const container = this.excalidrawContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { clientWidth: viewportWidth, clientHeight: viewportHeight } =
+      document.body;
+
+    const prevViewportState = this.device.viewport;
+
+    const nextViewportState = updateObject(prevViewportState, {
+      isLandscape: viewportWidth > viewportHeight,
+      isMobile: this.isMobileBreakpoint(viewportWidth, viewportHeight),
+    });
+
+    if (prevViewportState !== nextViewportState) {
+      this.device = { ...this.device, viewport: nextViewportState };
+      return true;
+    }
+    return false;
+  };
+
+  private refreshEditorBreakpoints = () => {
+    const container = this.excalidrawContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { width: editorWidth, height: editorHeight } =
+      container.getBoundingClientRect();
+
     const sidebarBreakpoint =
       this.props.UIOptions.dockedSidebarBreakpoint != null
         ? this.props.UIOptions.dockedSidebarBreakpoint
         : MQ_RIGHT_SIDEBAR_MIN_WIDTH;
-    this.device = updateObject(this.device, {
-      isLandscape: width > height,
-      isSmScreen: width < MQ_SM_MAX_WIDTH,
-      isMobile:
-        width < MQ_MAX_WIDTH_PORTRAIT ||
-        (height < MQ_MAX_HEIGHT_LANDSCAPE && width < MQ_MAX_WIDTH_LANDSCAPE),
-      canDeviceFitSidebar: width > sidebarBreakpoint,
+
+    const prevEditorState = this.device.editor;
+
+    const nextEditorState = updateObject(prevEditorState, {
+      isMobile: this.isMobileBreakpoint(editorWidth, editorHeight),
+      canFitSidebar: editorWidth > sidebarBreakpoint,
     });
+
+    if (prevEditorState !== nextEditorState) {
+      this.device = { ...this.device, editor: nextEditorState };
+      return true;
+    }
+    return false;
   };
 
   public async componentDidMount() {
@@ -1674,52 +1759,21 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     if (
-      this.excalidrawContainerRef.current &&
       // bounding rects don't work in tests so updating
       // the state on init would result in making the test enviro run
       // in mobile breakpoint (0 width/height), making everything fail
       !isTestEnv()
     ) {
-      this.refreshDeviceState(this.excalidrawContainerRef.current);
+      this.refreshViewportBreakpoints();
+      this.refreshEditorBreakpoints();
     }
 
-    if ("ResizeObserver" in window && this.excalidrawContainerRef?.current) {
+    if (supportsResizeObserver && this.excalidrawContainerRef.current) {
       this.resizeObserver = new ResizeObserver(() => {
-        // recompute device dimensions state
-        // ---------------------------------------------------------------------
-        this.refreshDeviceState(this.excalidrawContainerRef.current!);
-        // refresh offsets
-        // ---------------------------------------------------------------------
+        this.refreshEditorBreakpoints();
         this.updateDOMRect();
       });
       this.resizeObserver?.observe(this.excalidrawContainerRef.current);
-    } else if (window.matchMedia) {
-      const mdScreenQuery = window.matchMedia(
-        `(max-width: ${MQ_MAX_WIDTH_PORTRAIT}px), (max-height: ${MQ_MAX_HEIGHT_LANDSCAPE}px) and (max-width: ${MQ_MAX_WIDTH_LANDSCAPE}px)`,
-      );
-      const smScreenQuery = window.matchMedia(
-        `(max-width: ${MQ_SM_MAX_WIDTH}px)`,
-      );
-      const canDeviceFitSidebarMediaQuery = window.matchMedia(
-        `(min-width: ${
-          // NOTE this won't update if a different breakpoint is supplied
-          // after mount
-          this.props.UIOptions.dockedSidebarBreakpoint != null
-            ? this.props.UIOptions.dockedSidebarBreakpoint
-            : MQ_RIGHT_SIDEBAR_MIN_WIDTH
-        }px)`,
-      );
-      const handler = () => {
-        this.excalidrawContainerRef.current!.getBoundingClientRect();
-        this.device = updateObject(this.device, {
-          isSmScreen: smScreenQuery.matches,
-          isMobile: mdScreenQuery.matches,
-          canDeviceFitSidebar: canDeviceFitSidebarMediaQuery.matches,
-        });
-      };
-      mdScreenQuery.addListener(handler);
-      this.detachIsMobileMqHandler = () =>
-        mdScreenQuery.removeListener(handler);
     }
 
     const searchParams = new URLSearchParams(window.location.search.slice(1));
@@ -1751,6 +1805,7 @@ class App extends React.Component<AppProps, AppState> {
     this.scene.destroy();
     this.library.destroy();
     this.laserPathManager.destroy();
+    this.onChangeEmitter.destroy();
     ShapeCache.destroy();
     SnapCache.destroy();
     clearTimeout(touchTimeout);
@@ -1763,6 +1818,11 @@ class App extends React.Component<AppProps, AppState> {
     this.scene
       .getElementsIncludingDeleted()
       .forEach((element) => ShapeCache.delete(element));
+    this.refreshViewportBreakpoints();
+    this.updateDOMRect();
+    if (!supportsResizeObserver) {
+      this.refreshEditorBreakpoints();
+    }
     this.setState({});
   });
 
@@ -1816,7 +1876,6 @@ class App extends React.Component<AppProps, AppState> {
       false,
     );
 
-    this.detachIsMobileMqHandler?.();
     window.removeEventListener(EVENT.MESSAGE, this.onWindowMessage, false);
   }
 
@@ -1901,11 +1960,10 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     if (
-      this.excalidrawContainerRef.current &&
       prevProps.UIOptions.dockedSidebarBreakpoint !==
-        this.props.UIOptions.dockedSidebarBreakpoint
+      this.props.UIOptions.dockedSidebarBreakpoint
     ) {
-      this.refreshDeviceState(this.excalidrawContainerRef.current);
+      this.refreshEditorBreakpoints();
     }
 
     if (
@@ -2035,6 +2093,11 @@ class App extends React.Component<AppProps, AppState> {
         this.state,
         this.files,
       );
+      this.onChangeEmitter.trigger(
+        this.scene.getElementsIncludingDeleted(),
+        this.state,
+        this.files,
+      );
     }
   }
 
@@ -2077,7 +2140,7 @@ class App extends React.Component<AppProps, AppState> {
     if (!isExcalidrawActive || isWritableElement(event.target)) {
       return;
     }
-    this.cutAll();
+    this.actionManager.executeAction(actionCut, "keyboard", event);
     event.preventDefault();
     event.stopPropagation();
   });
@@ -2089,18 +2152,10 @@ class App extends React.Component<AppProps, AppState> {
     if (!isExcalidrawActive || isWritableElement(event.target)) {
       return;
     }
-    this.copyAll();
+    this.actionManager.executeAction(actionCopy, "keyboard", event);
     event.preventDefault();
     event.stopPropagation();
   });
-
-  private cutAll = () => {
-    this.actionManager.executeAction(actionCut, "keyboard");
-  };
-
-  private copyAll = () => {
-    this.actionManager.executeAction(actionCopy, "keyboard");
-  };
 
   private static resetTapTwice() {
     didTapTwice = false;
@@ -2162,8 +2217,8 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   public pasteFromClipboard = withBatchedUpdates(
-    async (event: ClipboardEvent | null) => {
-      const isPlainPaste = !!(IS_PLAIN_PASTE && event);
+    async (event: ClipboardEvent) => {
+      const isPlainPaste = !!IS_PLAIN_PASTE;
 
       // #686
       const target = document.activeElement;
@@ -2185,21 +2240,6 @@ class App extends React.Component<AppProps, AppState> {
         return;
       }
 
-      // must be called in the same frame (thus before any awaits) as the paste
-      // event else some browsers (FF...) will clear the clipboardData
-      // (something something security)
-      let file = event?.clipboardData?.files[0];
-
-      const data = await parseClipboard(event, isPlainPaste);
-      if (!file && data.text && !isPlainPaste) {
-        const string = data.text.trim();
-        if (string.startsWith("<svg") && string.endsWith("</svg>")) {
-          // ignore SVG validation/normalization which will be done during image
-          // initialization
-          file = SVGStringToFile(string);
-        }
-      }
-
       const { x: sceneX, y: sceneY } = viewportCoordsToSceneCoords(
         {
           clientX: this.lastViewportPosition.x,
@@ -2207,6 +2247,29 @@ class App extends React.Component<AppProps, AppState> {
         },
         this.state,
       );
+
+      // must be called in the same frame (thus before any awaits) as the paste
+      // event else some browsers (FF...) will clear the clipboardData
+      // (something something security)
+      let file = event?.clipboardData?.files[0];
+
+      const data = await parseClipboard(event, isPlainPaste);
+      if (!file && !isPlainPaste) {
+        if (data.mixedContent) {
+          return this.addElementsFromMixedContentPaste(data.mixedContent, {
+            isPlainPaste,
+            sceneX,
+            sceneY,
+          });
+        } else if (data.text) {
+          const string = data.text.trim();
+          if (string.startsWith("<svg") && string.endsWith("</svg>")) {
+            // ignore SVG validation/normalization which will be done during image
+            // initialization
+            file = SVGStringToFile(string);
+          }
+        }
+      }
 
       // prefer spreadsheet data over image file (MS Office/Libre Office)
       if (isSupportedImageFile(file) && !data.spreadsheet) {
@@ -2261,6 +2324,7 @@ class App extends React.Component<AppProps, AppState> {
         });
       } else if (data.text) {
         const maybeUrl = extractSrc(data.text);
+
         if (
           !isPlainPaste &&
           embeddableURLValidator(maybeUrl, this.props.validateEmbeddable) &&
@@ -2284,11 +2348,12 @@ class App extends React.Component<AppProps, AppState> {
     },
   );
 
-  private addElementsFromPasteOrLibrary = (opts: {
+  addElementsFromPasteOrLibrary = (opts: {
     elements: readonly ExcalidrawElement[];
     files: BinaryFiles | null;
     position: { clientX: number; clientY: number } | "cursor" | "center";
     retainSeed?: boolean;
+    fitToContent?: boolean;
   }) => {
     const elements = restoreElements(opts.elements, null, undefined);
     const [minX, minY, maxX, maxY] = getCommonBounds(elements);
@@ -2364,7 +2429,7 @@ class App extends React.Component<AppProps, AppState> {
         // from library, not when pasting from clipboard. Alas.
         openSidebar:
           this.state.openSidebar &&
-          this.device.canDeviceFitSidebar &&
+          this.device.editor.canFitSidebar &&
           jotaiStore.get(isSidebarDockedAtom)
             ? this.state.openSidebar
             : null,
@@ -2393,7 +2458,92 @@ class App extends React.Component<AppProps, AppState> {
       },
     );
     this.setActiveTool({ type: "selection" });
+
+    if (opts.fitToContent) {
+      this.scrollToContent(newElements, {
+        fitToContent: true,
+      });
+    }
   };
+
+  // TODO rewrite this to paste both text & images at the same time if
+  // pasted data contains both
+  private async addElementsFromMixedContentPaste(
+    mixedContent: PastedMixedContent,
+    {
+      isPlainPaste,
+      sceneX,
+      sceneY,
+    }: { isPlainPaste: boolean; sceneX: number; sceneY: number },
+  ) {
+    if (
+      !isPlainPaste &&
+      mixedContent.some((node) => node.type === "imageUrl")
+    ) {
+      const imageURLs = mixedContent
+        .filter((node) => node.type === "imageUrl")
+        .map((node) => node.value);
+      const responses = await Promise.all(
+        imageURLs.map(async (url) => {
+          try {
+            return { file: await ImageURLToFile(url) };
+          } catch (error: any) {
+            return { errorMessage: error.message as string };
+          }
+        }),
+      );
+      let y = sceneY;
+      let firstImageYOffsetDone = false;
+      const nextSelectedIds: Record<ExcalidrawElement["id"], true> = {};
+      for (const response of responses) {
+        if (response.file) {
+          const imageElement = this.createImageElement({
+            sceneX,
+            sceneY: y,
+          });
+
+          const initializedImageElement = await this.insertImageElement(
+            imageElement,
+            response.file,
+          );
+          if (initializedImageElement) {
+            // vertically center first image in the batch
+            if (!firstImageYOffsetDone) {
+              firstImageYOffsetDone = true;
+              y -= initializedImageElement.height / 2;
+            }
+            // hack to reset the `y` coord because we vertically center during
+            // insertImageElement
+            mutateElement(initializedImageElement, { y }, false);
+
+            y = imageElement.y + imageElement.height + 25;
+
+            nextSelectedIds[imageElement.id] = true;
+          }
+        }
+      }
+
+      this.setState({
+        selectedElementIds: makeNextSelectedElementIds(
+          nextSelectedIds,
+          this.state,
+        ),
+      });
+
+      const error = responses.find((response) => !!response.errorMessage);
+      if (error && error.errorMessage) {
+        this.setState({ errorMessage: error.errorMessage });
+      }
+    } else {
+      const textNodes = mixedContent.filter((node) => node.type === "text");
+      if (textNodes.length) {
+        this.addTextFromPaste(
+          textNodes.map((node) => node.value).join("\n\n"),
+          isPlainPaste,
+        );
+      }
+    }
+  }
 
   private addTextFromPaste(text: string, isPlainPaste = false) {
     const { x, y } = viewportCoordsToSceneCoords(
@@ -2493,7 +2643,7 @@ class App extends React.Component<AppProps, AppState> {
       !isPlainPaste &&
       textElements.length > 1 &&
       PLAIN_PASTE_TOAST_SHOWN === false &&
-      !this.device.isMobile
+      !this.device.editor.isMobile
     ) {
       this.setToast({
         message: t("toast.pasteAsSingleElement", {
@@ -2527,7 +2677,7 @@ class App extends React.Component<AppProps, AppState> {
       trackEvent(
         "toolbar",
         "toggleLock",
-        `${source} (${this.device.isMobile ? "mobile" : "desktop"})`,
+        `${source} (${this.device.editor.isMobile ? "mobile" : "desktop"})`,
       );
     }
     this.setState((prevState) => {
@@ -3022,7 +3172,9 @@ class App extends React.Component<AppProps, AppState> {
             trackEvent(
               "toolbar",
               shape,
-              `keyboard (${this.device.isMobile ? "mobile" : "desktop"})`,
+              `keyboard (${
+                this.device.editor.isMobile ? "mobile" : "desktop"
+              })`,
             );
           }
           this.setActiveTool({ type: shape });
@@ -3134,11 +3286,16 @@ class App extends React.Component<AppProps, AppState> {
   });
 
   setActiveTool = (
-    tool:
-      | {
-          type: ToolType;
-        }
-      | { type: "custom"; customType: string },
+    tool: (
+      | (
+          | { type: Exclude<ToolType, "image"> }
+          | {
+              type: Extract<ToolType, "image">;
+              insertOnCanvasDirectly?: boolean;
+            }
+        )
+      | { type: "custom"; customType: string }
+    ) & { locked?: boolean },
   ) => {
     const nextActiveTool = updateActiveTool(this.state, tool);
     if (nextActiveTool.type === "hand") {
@@ -3153,7 +3310,10 @@ class App extends React.Component<AppProps, AppState> {
       this.setState({ suggestedBindings: [] });
     }
     if (nextActiveTool.type === "image") {
-      this.onImageAction();
+      this.onImageAction({
+        insertOnCanvasDirectly:
+          (tool.type === "image" && tool.insertOnCanvasDirectly) ?? false,
+      });
     }
 
     this.setState((prevState) => {
@@ -3179,6 +3339,10 @@ class App extends React.Component<AppProps, AppState> {
         ...commonResets,
       };
     });
+  };
+
+  setOpenDialog = (dialogType: AppState["openDialog"]) => {
+    this.setState({ openDialog: dialogType });
   };
 
   private setCursor = (cursor: string) => {
@@ -3744,7 +3908,7 @@ class App extends React.Component<AppProps, AppState> {
           element,
           this.state,
           [scenePointer.x, scenePointer.y],
-          this.device.isMobile,
+          this.device.editor.isMobile,
         )
       );
     });
@@ -3776,7 +3940,7 @@ class App extends React.Component<AppProps, AppState> {
       this.hitLinkElement,
       this.state,
       [lastPointerDownCoords.x, lastPointerDownCoords.y],
-      this.device.isMobile,
+      this.device.editor.isMobile,
     );
     const lastPointerUpCoords = viewportCoordsToSceneCoords(
       this.lastPointerUpEvent!,
@@ -3786,7 +3950,7 @@ class App extends React.Component<AppProps, AppState> {
       this.hitLinkElement,
       this.state,
       [lastPointerUpCoords.x, lastPointerUpCoords.y],
-      this.device.isMobile,
+      this.device.editor.isMobile,
     );
     if (lastPointerDownHittingLinkIcon && lastPointerUpHittingLinkIcon) {
       let url = this.hitLinkElement.link;
@@ -4131,6 +4295,7 @@ class App extends React.Component<AppProps, AppState> {
       scenePointer.x,
       scenePointer.y,
     );
+
     this.hitLinkElement = this.getElementLinkAtPosition(
       scenePointer,
       hitElement,
@@ -4397,6 +4562,7 @@ class App extends React.Component<AppProps, AppState> {
       setCursor(this.interactiveCanvas, CURSOR_TYPE.AUTO);
     }
   }
+
   private handleCanvasPointerDown = (
     event: React.PointerEvent<HTMLElement>,
   ) => {
@@ -4586,7 +4752,7 @@ class App extends React.Component<AppProps, AppState> {
         pointerDownState,
       );
     } else if (this.state.activeTool.type === "custom") {
-      setCursor(this.interactiveCanvas, CURSOR_TYPE.AUTO);
+      setCursorForShape(this.interactiveCanvas, this.state);
     } else if (this.state.activeTool.type === "frame") {
       this.createFrameElementOnPointerDown(pointerDownState);
     } else if (this.state.activeTool.type === "laser") {
@@ -4605,6 +4771,11 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     this.props?.onPointerDown?.(this.state.activeTool, pointerDownState);
+    this.onPointerDownEmitter.trigger(
+      this.state.activeTool,
+      pointerDownState,
+      event,
+    );
 
     const onPointerMove =
       this.onPointerMoveFromPointerDownHandler(pointerDownState);
@@ -4641,7 +4812,7 @@ class App extends React.Component<AppProps, AppState> {
     );
     const clicklength =
       event.timeStamp - (this.lastPointerDownEvent?.timeStamp ?? 0);
-    if (this.device.isMobile && clicklength < 300) {
+    if (this.device.editor.isMobile && clicklength < 300) {
       const hitElement = this.getElementAtPosition(
         scenePointer.x,
         scenePointer.y,
@@ -6457,6 +6628,12 @@ class App extends React.Component<AppProps, AppState> {
         this.setState({ pendingImageElementId: null });
       }
 
+      this.onPointerUpEmitter.trigger(
+        this.state.activeTool,
+        pointerDownState,
+        childEvent,
+      );
+
       if (draggingElement?.type === "freedraw") {
         const pointerCoords = viewportCoordsToSceneCoords(
           childEvent,
@@ -7298,7 +7475,7 @@ class App extends React.Component<AppProps, AppState> {
     this.scene.addNewElement(imageElement);
 
     try {
-      await this.initializeImage({
+      return await this.initializeImage({
         imageFile,
         imageElement,
         showCursorImagePreview,
@@ -7311,6 +7488,7 @@ class App extends React.Component<AppProps, AppState> {
       this.setState({
         errorMessage: error.message || t("errors.imageInsertError"),
       });
+      return null;
     }
   };
 
@@ -7353,9 +7531,11 @@ class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  private onImageAction = async (
-    { insertOnCanvasDirectly } = { insertOnCanvasDirectly: false },
-  ) => {
+  private onImageAction = async ({
+    insertOnCanvasDirectly,
+  }: {
+    insertOnCanvasDirectly: boolean;
+  }) => {
     try {
       const clientX = this.state.width / 2 + this.state.offsetLeft;
       const clientY = this.state.height / 2 + this.state.offsetTop;

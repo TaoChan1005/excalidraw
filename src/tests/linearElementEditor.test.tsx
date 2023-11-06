@@ -273,7 +273,7 @@ describe("Test Linear Elements", () => {
 
       // drag line from midpoint
       drag(midpoint, [midpoint[0] + delta, midpoint[1] + delta]);
-      expect(renderInteractiveScene).toHaveBeenCalledTimes(14);
+      expect(renderInteractiveScene).toHaveBeenCalledTimes(13);
       expect(renderStaticScene).toHaveBeenCalledTimes(6);
 
       expect(line.points.length).toEqual(3);
@@ -416,7 +416,7 @@ describe("Test Linear Elements", () => {
           lastSegmentMidpoint[1] + delta,
         ]);
 
-        expect(renderInteractiveScene).toHaveBeenCalledTimes(21);
+        expect(renderInteractiveScene).toHaveBeenCalledTimes(19);
         expect(renderStaticScene).toHaveBeenCalledTimes(9);
 
         expect(line.points.length).toEqual(5);
@@ -519,7 +519,7 @@ describe("Test Linear Elements", () => {
         // delete 3rd point
         deletePoint(points[2]);
         expect(line.points.length).toEqual(3);
-        expect(renderInteractiveScene).toHaveBeenCalledTimes(21);
+        expect(renderInteractiveScene).toHaveBeenCalledTimes(20);
         expect(renderStaticScene).toHaveBeenCalledTimes(9);
 
         const newMidPoints = LinearElementEditor.getEditorMidPoints(
@@ -566,7 +566,7 @@ describe("Test Linear Elements", () => {
           lastSegmentMidpoint[0] + delta,
           lastSegmentMidpoint[1] + delta,
         ]);
-        expect(renderInteractiveScene).toHaveBeenCalledTimes(21);
+        expect(renderInteractiveScene).toHaveBeenCalledTimes(19);
         expect(renderStaticScene).toHaveBeenCalledTimes(9);
         expect(line.points.length).toEqual(5);
 
@@ -1201,6 +1201,30 @@ describe("Test Linear Elements", () => {
           y: 7.5,
         }),
       );
+    });
+
+    it("should not update label position when arrow dragged", () => {
+      createTwoPointerLinearElement("arrow");
+      let arrow = h.elements[0] as ExcalidrawLinearElement;
+      createBoundTextElement(DEFAULT_TEXT, arrow);
+      let label = h.elements[1] as ExcalidrawTextElementWithContainer;
+      expect(arrow.x).toBe(20);
+      expect(arrow.y).toBe(20);
+      expect(label.x).toBe(0);
+      expect(label.y).toBe(0);
+      mouse.reset();
+      mouse.select(arrow);
+      mouse.select(label);
+      mouse.downAt(arrow.x, arrow.y);
+      mouse.moveTo(arrow.x + 20, arrow.y + 30);
+      mouse.up(arrow.x + 20, arrow.y + 30);
+
+      arrow = h.elements[0] as ExcalidrawLinearElement;
+      label = h.elements[1] as ExcalidrawTextElementWithContainer;
+      expect(arrow.x).toBe(80);
+      expect(arrow.y).toBe(100);
+      expect(label.x).toBe(0);
+      expect(label.y).toBe(0);
     });
   });
 });
