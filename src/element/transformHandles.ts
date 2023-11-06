@@ -4,9 +4,9 @@ import {
   PointerType,
 } from "./types";
 
-import { getElementAbsoluteCoords } from "./bounds";
+import { Bounds, getElementAbsoluteCoords } from "./bounds";
 import { rotate } from "../math";
-import { AppState, Zoom } from "../types";
+import { InteractiveCanvasAppState, Zoom } from "../types";
 import { isTextElement } from ".";
 import { isFrameElement, isLinearElement } from "./typeChecks";
 import { DEFAULT_SPACING } from "../renderer/renderScene";
@@ -23,7 +23,7 @@ export type TransformHandleDirection =
 
 export type TransformHandleType = TransformHandleDirection | "rotation";
 
-export type TransformHandle = [number, number, number, number];
+export type TransformHandle = Bounds;
 export type TransformHandles = Partial<{
   [T in TransformHandleType]: TransformHandle;
 }>;
@@ -276,8 +276,8 @@ export const getTransformHandles = (
 };
 
 export const shouldShowBoundingBox = (
-  elements: NonDeletedExcalidrawElement[],
-  appState: AppState,
+  elements: readonly NonDeletedExcalidrawElement[],
+  appState: InteractiveCanvasAppState,
 ) => {
   if (appState.editingLinearElement) {
     return false;

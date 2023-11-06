@@ -53,7 +53,7 @@ export const SidebarInner = forwardRef(
     }: SidebarProps & Omit<React.RefAttributes<HTMLDivElement>, "onSelect">,
     ref: React.ForwardedRef<HTMLDivElement>,
   ) => {
-    if (process.env.NODE_ENV === "development" && onDock && docked == null) {
+    if (import.meta.env.DEV && onDock && docked == null) {
       console.warn(
         "Sidebar: `docked` must be set when `onDock` is supplied for the sidebar to be user-dockable. To hide this message, either pass `docked` or remove `onDock`",
       );
@@ -113,11 +113,11 @@ export const SidebarInner = forwardRef(
           if ((event.target as Element).closest(".sidebar-trigger")) {
             return;
           }
-          if (!docked || !device.canDeviceFitSidebar) {
+          if (!docked || !device.editor.canFitSidebar) {
             closeLibrary();
           }
         },
-        [closeLibrary, docked, device.canDeviceFitSidebar],
+        [closeLibrary, docked, device.editor.canFitSidebar],
       ),
     );
 
@@ -125,7 +125,7 @@ export const SidebarInner = forwardRef(
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
           event.key === KEYS.ESCAPE &&
-          (!docked || !device.canDeviceFitSidebar)
+          (!docked || !device.editor.canFitSidebar)
         ) {
           closeLibrary();
         }
@@ -134,7 +134,7 @@ export const SidebarInner = forwardRef(
       return () => {
         document.removeEventListener(EVENT.KEYDOWN, handleKeyDown);
       };
-    }, [closeLibrary, docked, device.canDeviceFitSidebar]);
+    }, [closeLibrary, docked, device.editor.canFitSidebar]);
 
     return (
       <Island

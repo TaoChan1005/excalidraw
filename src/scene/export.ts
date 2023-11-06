@@ -1,7 +1,11 @@
 import rough from "roughjs/bin/rough";
 import { NonDeletedExcalidrawElement } from "../element/types";
-import { getCommonBounds, getElementAbsoluteCoords } from "../element/bounds";
-import { renderScene, renderSceneToSvg } from "../renderer/renderScene";
+import {
+  Bounds,
+  getCommonBounds,
+  getElementAbsoluteCoords,
+} from "../element/bounds";
+import { renderSceneToSvg, renderStaticScene } from "../renderer/renderScene";
 import { distance, isOnlyExportingSingleFrame } from "../utils";
 import { AppState, BinaryFiles } from "../types";
 import { DEFAULT_EXPORT_PADDING, SVG_NS, THEME_FILTER } from "../constants";
@@ -13,7 +17,7 @@ import {
 } from "../element/image";
 import Scene from "./Scene";
 
-export const SVG_EXPORT_TAG = `<!-- svg-source:excalidraw -->`;
+const SVG_EXPORT_TAG = `<!-- svg-source:excalidraw -->`;
 
 export const exportToCanvas = async (
   elements: readonly NonDeletedExcalidrawElement[],
@@ -54,26 +58,23 @@ export const exportToCanvas = async (
 
   const onlyExportingSingleFrame = isOnlyExportingSingleFrame(elements);
 
-  renderScene({
-    elements,
-    appState,
-    scale,
-    rc: rough.canvas(canvas),
+  renderStaticScene({
     canvas,
-    renderConfig: {
+    rc: rough.canvas(canvas),
+    elements,
+    visibleElements: elements,
+    scale,
+    appState: {
+      ...appState,
       viewBackgroundColor: exportBackground ? viewBackgroundColor : null,
       scrollX: -minX + (onlyExportingSingleFrame ? 0 : exportPadding),
       scrollY: -minY + (onlyExportingSingleFrame ? 0 : exportPadding),
       zoom: defaultAppState.zoom,
-      remotePointerViewportCoords: {},
-      remoteSelectedElementIds: {},
       shouldCacheIgnoreZoom: false,
-      remotePointerUsernames: {},
-      remotePointerUserStates: {},
       theme: appState.exportWithDarkMode ? "dark" : "light",
+    },
+    renderConfig: {
       imageCache,
-      renderScrollbars: false,
-      renderSelection: false,
       renderGrid: false,
       isExporting: true,
     },
@@ -96,6 +97,7 @@ export const exportToSvg = async (
   files: BinaryFiles | null,
   opts?: {
     serializeAsJSON?: () => string;
+    renderEmbeddables?: boolean;
   },
 ): Promise<SVGSVGElement> => {
   const {
@@ -132,12 +134,13 @@ export const exportToSvg = async (
   }
 
   let assetPath = "https://excalidraw.com/";
-
   // Asset path needs to be determined only when using package
-  if (process.env.IS_EXCALIDRAW_NPM_PACKAGE) {
+  if (import.meta.env.VITE_IS_EXCALIDRAW_NPM_PACKAGE) {
     assetPath =
       window.EXCALIDRAW_ASSET_PATH ||
-      `https://unpkg.com/${process.env.PKG_NAME}@${process.env.PKG_VERSION}`;
+      `https://unpkg.com/${import.meta.env.VITE_PKG_NAME}@${
+        import.meta.env.PKG_VERSION
+      }`;
 
     if (assetPath?.startsWith("/")) {
       assetPath = assetPath.replace("/", `${window.location.origin}/`);
@@ -212,6 +215,7 @@ export const exportToSvg = async (
     offsetY,
     exportWithDarkMode: appState.exportWithDarkMode,
     exportingFrameId: exportingFrame?.id || null,
+    renderEmbeddables: opts?.renderEmbeddables,
   });
 
   return svgRoot;
@@ -221,7 +225,7 @@ export const exportToSvg = async (
 const getCanvasSize = (
   elements: readonly NonDeletedExcalidrawElement[],
   exportPadding: number,
-): [number, number, number, number] => {
+): Bounds => {
   // we should decide if we are exporting the whole canvas
   // if so, we are not clipping elements in the frame
   // and therefore, we should not do anything special
