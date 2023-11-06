@@ -62,7 +62,6 @@ interface LayerUIProps {
   appState: UIAppState;
   files: BinaryFiles;
   canvas: HTMLCanvasElement;
-  interactiveCanvas: HTMLCanvasElement | null;
   setAppState: React.Component<any, AppState>["setState"];
   elements: readonly NonDeletedExcalidrawElement[];
   onLockToggle: () => void;
@@ -73,7 +72,6 @@ interface LayerUIProps {
   renderTopRightUI?: ExcalidrawProps["renderTopRightUI"];
   renderCustomStats?: ExcalidrawProps["renderCustomStats"];
   UIOptions: AppProps["UIOptions"];
-  onImageAction: (data: { insertOnCanvasDirectly: boolean }) => void;
   onExportImage: AppClassProperties["onExportImage"];
   renderWelcomeScreen: boolean;
   children?: React.ReactNode;
@@ -123,7 +121,6 @@ const LayerUI = ({
   setAppState,
   elements,
   canvas,
-  interactiveCanvas,
   onLockToggle,
   onHandToolToggle,
   onPenModeToggle,
@@ -131,7 +128,6 @@ const LayerUI = ({
   renderTopRightUI,
   renderCustomStats,
   UIOptions,
-  onImageAction,
   onExportImage,
   renderWelcomeScreen,
   children,
@@ -250,7 +246,7 @@ const LayerUI = ({
                       >
                         <HintViewer
                           appState={appState}
-                          isMobile={device.isMobile}
+                          isMobile={device.editor.isMobile}
                           device={device}
                           app={app}
                         />
@@ -280,14 +276,8 @@ const LayerUI = ({
 
                           <ShapesSwitcher
                             appState={appState}
-                            interactiveCanvas={interactiveCanvas}
                             activeTool={appState.activeTool}
                             app={app}
-                            onImageAction={({ pointerType }) => {
-                              onImageAction({
-                                insertOnCanvasDirectly: pointerType !== "mouse",
-                              });
-                            }}
                           />
                         </Stack.Row>
                       </Island>
@@ -324,7 +314,7 @@ const LayerUI = ({
             )}
           >
             <UserList collaborators={appState.collaborators} />
-            {renderTopRightUI?.(device.isMobile, appState)}
+            {renderTopRightUI?.(device.editor.isMobile, appState)}
             {!appState.viewModeEnabled &&
               // hide button when sidebar docked
               (!isSidebarDocked ||
@@ -345,7 +335,7 @@ const LayerUI = ({
           trackEvent(
             "sidebar",
             `toggleDock (${docked ? "dock" : "undock"})`,
-            `(${device.isMobile ? "mobile" : "desktop"})`,
+            `(${device.editor.isMobile ? "mobile" : "desktop"})`,
           );
         }}
       />
@@ -373,7 +363,7 @@ const LayerUI = ({
             trackEvent(
               "sidebar",
               `${DEFAULT_SIDEBAR.name} (open)`,
-              `button (${device.isMobile ? "mobile" : "desktop"})`,
+              `button (${device.editor.isMobile ? "mobile" : "desktop"})`,
             );
           }
         }}
@@ -390,7 +380,7 @@ const LayerUI = ({
           {appState.errorMessage}
         </ErrorDialog>
       )}
-      {eyeDropperState && !device.isMobile && (
+      {eyeDropperState && !device.editor.isMobile && (
         <EyeDropper
           colorPickerType={eyeDropperState.colorPickerType}
           onCancel={() => {
@@ -460,7 +450,7 @@ const LayerUI = ({
           }
         />
       )}
-      {device.isMobile && (
+      {device.editor.isMobile && (
         <MobileMenu
           app={app}
           appState={appState}
@@ -472,8 +462,6 @@ const LayerUI = ({
           onLockToggle={onLockToggle}
           onHandToolToggle={onHandToolToggle}
           onPenModeToggle={onPenModeToggle}
-          interactiveCanvas={interactiveCanvas}
-          onImageAction={onImageAction}
           renderTopRightUI={renderTopRightUI}
           renderCustomStats={renderCustomStats}
           renderSidebars={renderSidebars}
@@ -481,14 +469,14 @@ const LayerUI = ({
           renderWelcomeScreen={renderWelcomeScreen}
         />
       )}
-      {!device.isMobile && (
+      {!device.editor.isMobile && (
         <>
           <div
             className="layer-ui__wrapper"
             style={
               appState.openSidebar &&
               isSidebarDocked &&
-              device.canDeviceFitSidebar
+              device.editor.canFitSidebar
                 ? { width: `calc(100% - ${LIBRARY_SIDEBAR_WIDTH}px)` }
                 : {}
             }
@@ -560,18 +548,8 @@ const areEqual = (prevProps: LayerUIProps, nextProps: LayerUIProps) => {
     return false;
   }
 
-  const {
-    canvas: _pC,
-    interactiveCanvas: _pIC,
-    appState: prevAppState,
-    ...prev
-  } = prevProps;
-  const {
-    canvas: _nC,
-    interactiveCanvas: _nIC,
-    appState: nextAppState,
-    ...next
-  } = nextProps;
+  const { canvas: _pC, appState: prevAppState, ...prev } = prevProps;
+  const { canvas: _nC, appState: nextAppState, ...next } = nextProps;
 
   return (
     isShallowEqual(
