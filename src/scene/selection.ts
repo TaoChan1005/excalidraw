@@ -4,11 +4,11 @@ import {
 } from "../element/types";
 import { getElementAbsoluteCoords, getElementBounds } from "../element";
 import { AppState, InteractiveCanvasAppState } from "../types";
-import { isBoundToContainer } from "../element/typeChecks";
+import { isBoundToContainer, isFrameLikeElement } from "../element/typeChecks";
 import {
   elementOverlapsWithFrame,
   getContainingFrame,
-  getFrameElements,
+  getFrameChildren,
 } from "../frame";
 import { isShallowEqual } from "../utils";
 import { isElementInViewport } from "../element/sizeHelpers";
@@ -27,7 +27,7 @@ export const excludeElementsInFramesFromSelection = <
   const framesInSelection = new Set<T["id"]>();
 
   selectedElements.forEach((element) => {
-    if (element.type === "frame") {
+    if (isFrameLikeElement(element)) {
       framesInSelection.add(element.id);
     }
   });
@@ -190,8 +190,8 @@ export const getSelectedElements = (
   if (opts?.includeElementsInFrames) {
     const elementsToInclude: ExcalidrawElement[] = [];
     selectedElements.forEach((element) => {
-      if (element.type === "frame") {
-        getFrameElements(elements, element.id).forEach((e) =>
+      if (isFrameLikeElement(element)) {
+        getFrameChildren(elements, element.id).forEach((e) =>
           elementsToInclude.push(e),
         );
       }

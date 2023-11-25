@@ -15,15 +15,18 @@ import {
   ExcalidrawImageElement,
   Theme,
   StrokeRoundness,
-  ExcalidrawFrameElement,
   ExcalidrawEmbeddableElement,
+  ExcalidrawMagicFrameElement,
+  ExcalidrawFrameLikeElement,
+  ExcalidrawElementType,
 } from "./element/types";
+import { Action } from "./actions/types";
 import { Point as RoughPoint } from "roughjs/bin/geometry";
 import { LinearElementEditor } from "./element/linearElementEditor";
 import { SuggestedBinding } from "./element/binding";
 import { ImportedDataState } from "./data/types";
 import type App from "./components/App";
-import type { ResolvablePromise, throttleRAF } from "./utils";
+import type { throttleRAF } from "./utils";
 import { Spreadsheet } from "./charts";
 import { Language } from "./i18n";
 import { ClipboardData } from "./clipboard";
@@ -34,7 +37,7 @@ import type { FileSystemHandle } from "./data/filesystem";
 import type { IMAGE_MIME_TYPES, MIME_TYPES } from "./constants";
 import { ContextMenuItems } from "./components/ContextMenu";
 import { SnapLine } from "./snapping";
-import { Merge, ForwardRef, ValueOf } from "./utility-types";
+import { Merge, ValueOf } from "./utility-types";
 
 export type Point = Readonly<RoughPoint>;
 
@@ -101,8 +104,11 @@ export type ToolType =
   | "eraser"
   | "hand"
   | "frame"
+  | "magicframe"
   | "embeddable"
   | "laser";
+
+export type ElementOrToolType = ExcalidrawElementType | ToolType | "custom";
 
 export type ActiveTool =
   | {
@@ -158,9 +164,6 @@ export type InteractiveCanvasAppState = Readonly<
     suggestedBindings: AppState["suggestedBindings"];
     isRotating: AppState["isRotating"];
     elementsToHighlight: AppState["elementsToHighlight"];
-    // App
-    openSidebar: AppState["openSidebar"];
-    showHyperlinkPopup: AppState["showHyperlinkPopup"];
     // Collaborators
     collaborators: AppState["collaborators"];
     // SnapLines
@@ -169,7 +172,7 @@ export type InteractiveCanvasAppState = Readonly<
   }
 >;
 
-export type AppState = {
+export interface AppState {
   contextMenu: {
     items: ContextMenuItems;
     top: number;
@@ -189,7 +192,7 @@ export type AppState = {
   isBindingEnabled: boolean;
   startBoundElement: NonDeleted<ExcalidrawBindableElement> | null;
   suggestedBindings: SuggestedBinding[];
-  frameToHighlight: NonDeleted<ExcalidrawFrameElement> | null;
+  frameToHighlight: NonDeleted<ExcalidrawFrameLikeElement> | null;
   frameRendering: {
     enabled: boolean;
     name: boolean;
@@ -241,7 +244,16 @@ export type AppState = {
   openMenu: "canvas" | "shape" | null;
   openPopup: "canvasBackground" | "elementBackground" | "elementStroke" | null;
   openSidebar: { name: SidebarName; tab?: SidebarTabName } | null;
-  openDialog: "imageExport" | "help" | "jsonExport" | "mermaid" | null;
+  openDialog:
+    | null
+    | { name: "imageExport" | "help" | "jsonExport" | "mermaid" }
+    | {
+        name: "magicSettings";
+        source:
+          | "tool" // when magicframe tool is selected
+          | "generation" // when magicframe generate button is clicked
+          | "settings"; // when AI settings dialog is explicitly invoked
+      };
   /**
    * Reflects user preference for whether the default sidebar should be docked.
    *
@@ -296,7 +308,7 @@ export type AppState = {
     y: number;
   } | null;
   objectsSnapModeEnabled: boolean;
-};
+}
 
 export type UIAppState = Omit<
   AppState,
@@ -362,15 +374,6 @@ export type LibraryItemsSource =
   | Promise<LibraryItems_anyVersion | Blob>;
 // -----------------------------------------------------------------------------
 
-// NOTE ready/readyPromise props are optional for host apps' sake (our own
-// implem guarantees existence)
-export type ExcalidrawAPIRefValue =
-  | ExcalidrawImperativeAPI
-  | {
-      readyPromise?: ResolvablePromise<ExcalidrawImperativeAPI>;
-      ready?: false;
-    };
-
 export type ExcalidrawInitialDataState = Merge<
   ImportedDataState,
   {
@@ -390,7 +393,7 @@ export interface ExcalidrawProps {
     | ExcalidrawInitialDataState
     | null
     | Promise<ExcalidrawInitialDataState | null>;
-  excalidrawRef?: ForwardRef<ExcalidrawAPIRefValue>;
+  excalidrawAPI?: (api: ExcalidrawImperativeAPI) => void;
   isCollaborating?: boolean;
   onPointerUpdate?: (payload: {
     pointer: { x: number; y: number; tool: "pointer" | "laser" };
@@ -445,6 +448,7 @@ export interface ExcalidrawProps {
     element: NonDeleted<ExcalidrawEmbeddableElement>,
     appState: AppState,
   ) => JSX.Element | null;
+  aiEnabled?: boolean;
 }
 
 export type SceneData = {
@@ -480,7 +484,7 @@ export type ExportOpts = {
 // truthiness value will determine whether the action is rendered or not
 // (see manager renderAction). We also override canvasAction values in
 // excalidraw package index.tsx.
-type CanvasActions = Partial<{
+export type CanvasActions = Partial<{
   changeViewBackgroundColor: boolean;
   clearCanvas: boolean;
   export: false | ExportOpts;
@@ -490,9 +494,12 @@ type CanvasActions = Partial<{
   saveAsImage: boolean;
 }>;
 
-type UIOptions = Partial<{
+export type UIOptions = Partial<{
   dockedSidebarBreakpoint: number;
   canvasActions: CanvasActions;
+  tools: {
+    image: boolean;
+  };
   /** @deprecated does nothing. Will be removed in 0.15 */
   welcomeScreen?: boolean;
 }>;
@@ -510,6 +517,7 @@ export type AppProps = Merge<
     handleKeyboardGlobally: boolean;
     isCollaborating: boolean;
     children?: React.ReactNode;
+    aiEnabled: boolean;
   }
 >;
 
@@ -543,6 +551,8 @@ export type AppClassProperties = {
   togglePenMode: App["togglePenMode"];
   setActiveTool: App["setActiveTool"];
   setOpenDialog: App["setOpenDialog"];
+  insertEmbeddableElement: App["insertEmbeddableElement"];
+  onMagicframeToolSelect: App["onMagicframeToolSelect"];
 };
 
 export type PointerDownState = Readonly<{
@@ -627,11 +637,10 @@ export type ExcalidrawImperativeAPI = {
   getSceneElements: InstanceType<typeof App>["getSceneElements"];
   getAppState: () => InstanceType<typeof App>["state"];
   getFiles: () => InstanceType<typeof App>["files"];
+  registerAction: (action: Action) => void;
   refresh: InstanceType<typeof App>["refresh"];
   setToast: InstanceType<typeof App>["setToast"];
   addFiles: (data: BinaryFileData[]) => void;
-  readyPromise: ResolvablePromise<ExcalidrawImperativeAPI>;
-  ready: true;
   id: string;
   setActiveTool: InstanceType<typeof App>["setActiveTool"];
   setCursor: InstanceType<typeof App>["setCursor"];
@@ -687,12 +696,14 @@ type FrameNameBounds = {
 };
 
 export type FrameNameBoundsCache = {
-  get: (frameElement: ExcalidrawFrameElement) => FrameNameBounds | null;
+  get: (
+    frameElement: ExcalidrawFrameLikeElement | ExcalidrawMagicFrameElement,
+  ) => FrameNameBounds | null;
   _cache: Map<
     string,
     FrameNameBounds & {
       zoom: AppState["zoom"]["value"];
-      versionNonce: ExcalidrawFrameElement["versionNonce"];
+      versionNonce: ExcalidrawFrameLikeElement["versionNonce"];
     }
   >;
 };
@@ -712,3 +723,5 @@ export type Primitive =
   | symbol
   | null
   | undefined;
+
+export type JSONValue = string | number | boolean | null | object;
