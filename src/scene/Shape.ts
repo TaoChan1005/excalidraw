@@ -14,18 +14,39 @@ import { generateFreeDrawShape } from "../renderer/renderElement";
 import { isTransparent, assertNever } from "../utils";
 import { simplify } from "points-on-curve";
 import { ROUGHNESS } from "../constants";
+import {
+  isEmbeddableElement,
+  isIframeElement,
+  isIframeLikeElement,
+  isLinearElement,
+} from "../element/typeChecks";
+import { canChangeRoundness } from "./comparisons";
 
 const getDashArrayDashed = (strokeWidth: number) => [8, 8 + strokeWidth];
 
 const getDashArrayDotted = (strokeWidth: number) => [1.5, 6 + strokeWidth];
 
-function adjustRoughness(size: number, roughness: number): number {
-  if (size >= 50) {
+function adjustRoughness(element: ExcalidrawElement): number {
+  const roughness = element.roughness;
+
+  const maxSize = Math.max(element.width, element.height);
+  const minSize = Math.min(element.width, element.height);
+
+  // don't reduce roughness if
+  if (
+    // both sides relatively big
+    (minSize >= 20 && maxSize >= 50) ||
+    // is round & both sides above 15px
+    (minSize >= 15 &&
+      !!element.roundness &&
+      canChangeRoundness(element.type)) ||
+    // relatively long linear element
+    (isLinearElement(element) && maxSize >= 50)
+  ) {
     return roughness;
   }
-  const factor = 2 + (50 - size) / 10;
 
-  return roughness / factor;
+  return Math.min(roughness / (maxSize < 10 ? 3 : 2), 2.5);
 }
 
 export const generateRoughOptions = (
@@ -54,10 +75,7 @@ export const generateRoughOptions = (
     // calculate them (and we don't want the fills to be modified)
     fillWeight: element.strokeWidth / 2,
     hachureGap: element.strokeWidth * 4,
-    roughness: adjustRoughness(
-      Math.min(element.width, element.height),
-      element.roughness,
-    ),
+    roughness: adjustRoughness(element),
     stroke: element.strokeColor,
     preserveVertices:
       continuousPath || element.roughness < ROUGHNESS.cartoonist,
@@ -65,6 +83,7 @@ export const generateRoughOptions = (
 
   switch (element.type) {
     case "rectangle":
+    case "iframe":
     case "embeddable":
     case "diamond":
     case "ellipse": {
@@ -96,13 +115,13 @@ export const generateRoughOptions = (
   }
 };
 
-const modifyEmbeddableForRoughOptions = (
+const modifyIframeLikeForRoughOptions = (
   element: NonDeletedExcalidrawElement,
   isExporting: boolean,
 ) => {
   if (
-    element.type === "embeddable" &&
-    (isExporting || !element.validated) &&
+    isIframeLikeElement(element) &&
+    (isExporting || (isEmbeddableElement(element) && !element.validated)) &&
     isTransparent(element.backgroundColor) &&
     isTransparent(element.strokeColor)
   ) {
@@ -112,6 +131,16 @@ const modifyEmbeddableForRoughOptions = (
       backgroundColor: "#d3d3d3",
       fillStyle: "solid",
     } as const;
+  } else if (isIframeElement(element)) {
+    return {
+      ...element,
+      strokeColor: isTransparent(element.strokeColor)
+        ? "#000000"
+        : element.strokeColor,
+      backgroundColor: isTransparent(element.backgroundColor)
+        ? "#f4f4f6"
+        : element.backgroundColor,
+    };
   }
   return element;
 };
@@ -130,6 +159,7 @@ export const _generateElementShape = (
 ): Drawable | Drawable[] | null => {
   switch (element.type) {
     case "rectangle":
+    case "iframe":
     case "embeddable": {
       let shape: ElementShapes[typeof element.type];
       // this is for rendering the stroke/bg of the embeddable, especially
@@ -146,7 +176,7 @@ export const _generateElementShape = (
             h - r
           } L 0 ${r} Q 0 0, ${r} 0`,
           generateRoughOptions(
-            modifyEmbeddableForRoughOptions(element, isExporting),
+            modifyIframeLikeForRoughOptions(element, isExporting),
             true,
           ),
         );
@@ -157,7 +187,7 @@ export const _generateElementShape = (
           element.width,
           element.height,
           generateRoughOptions(
-            modifyEmbeddableForRoughOptions(element, isExporting),
+            modifyIframeLikeForRoughOptions(element, isExporting),
             false,
           ),
         );
@@ -360,6 +390,7 @@ export const _generateElementShape = (
       return shape;
     }
     case "frame":
+    case "magicframe":
     case "text":
     case "image": {
       const shape: ElementShapes[typeof element.type] = null;

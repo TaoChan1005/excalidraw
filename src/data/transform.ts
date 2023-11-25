@@ -15,6 +15,7 @@ import {
   ElementConstructorOpts,
   newFrameElement,
   newImageElement,
+  newMagicFrameElement,
   newTextElement,
 } from "../element/newElement";
 import {
@@ -26,12 +27,13 @@ import {
   ExcalidrawArrowElement,
   ExcalidrawBindableElement,
   ExcalidrawElement,
-  ExcalidrawEmbeddableElement,
   ExcalidrawFrameElement,
   ExcalidrawFreeDrawElement,
   ExcalidrawGenericElement,
+  ExcalidrawIframeLikeElement,
   ExcalidrawImageElement,
   ExcalidrawLinearElement,
+  ExcalidrawMagicFrameElement,
   ExcalidrawSelectionElement,
   ExcalidrawTextElement,
   FileId,
@@ -40,7 +42,7 @@ import {
   VerticalAlign,
 } from "../element/types";
 import { MarkOptional } from "../utility-types";
-import { assertNever, getFontString } from "../utils";
+import { assertNever, cloneJSON, getFontString } from "../utils";
 import { getSizeFromPoints } from "../points";
 import { randomId } from "../random";
 
@@ -61,7 +63,12 @@ export type ValidLinearElement = {
             | {
                 type: Exclude<
                   ExcalidrawBindableElement["type"],
-                  "image" | "text" | "frame" | "embeddable"
+                  | "image"
+                  | "text"
+                  | "frame"
+                  | "magicframe"
+                  | "embeddable"
+                  | "iframe"
                 >;
                 id?: ExcalidrawGenericElement["id"];
               }
@@ -69,7 +76,12 @@ export type ValidLinearElement = {
                 id: ExcalidrawGenericElement["id"];
                 type?: Exclude<
                   ExcalidrawBindableElement["type"],
-                  "image" | "text" | "frame" | "embeddable"
+                  | "image"
+                  | "text"
+                  | "frame"
+                  | "magicframe"
+                  | "embeddable"
+                  | "iframe"
                 >;
               }
           )
@@ -93,7 +105,12 @@ export type ValidLinearElement = {
             | {
                 type: Exclude<
                   ExcalidrawBindableElement["type"],
-                  "image" | "text" | "frame" | "embeddable"
+                  | "image"
+                  | "text"
+                  | "frame"
+                  | "magicframe"
+                  | "embeddable"
+                  | "iframe"
                 >;
                 id?: ExcalidrawGenericElement["id"];
               }
@@ -101,7 +118,12 @@ export type ValidLinearElement = {
                 id: ExcalidrawGenericElement["id"];
                 type?: Exclude<
                   ExcalidrawBindableElement["type"],
-                  "image" | "text" | "frame" | "embeddable"
+                  | "image"
+                  | "text"
+                  | "frame"
+                  | "magicframe"
+                  | "embeddable"
+                  | "iframe"
                 >;
               }
           )
@@ -137,7 +159,7 @@ export type ValidContainer =
 export type ExcalidrawElementSkeleton =
   | Extract<
       Exclude<ExcalidrawElement, ExcalidrawSelectionElement>,
-      ExcalidrawEmbeddableElement | ExcalidrawFreeDrawElement
+      ExcalidrawIframeLikeElement | ExcalidrawFreeDrawElement
     >
   | ({
       type: Extract<ExcalidrawLinearElement["type"], "line">;
@@ -163,7 +185,12 @@ export type ExcalidrawElementSkeleton =
       type: "frame";
       children: readonly ExcalidrawElement["id"][];
       name?: string;
-    } & Partial<ExcalidrawFrameElement>);
+    } & Partial<ExcalidrawFrameElement>)
+  | ({
+      type: "magicframe";
+      children: readonly ExcalidrawElement["id"][];
+      name?: string;
+    } & Partial<ExcalidrawMagicFrameElement>);
 
 const DEFAULT_LINEAR_ELEMENT_PROPS = {
   width: 100,
@@ -368,7 +395,8 @@ const bindLinearElementToElement = (
   // Update start/end points by 0.5 so bindings don't overlap with start/end bound element coordinates.
   const endPointIndex = linearElement.points.length - 1;
   const delta = 0.5;
-  const newPoints = JSON.parse(JSON.stringify(linearElement.points));
+
+  const newPoints = cloneJSON(linearElement.points) as [number, number][];
   // left to right so shift the arrow towards right
   if (
     linearElement.points[endPointIndex][0] >
@@ -439,9 +467,7 @@ export const convertToExcalidrawElements = (
   if (!elementsSkeleton) {
     return [];
   }
-  const elements: ExcalidrawElementSkeleton[] = JSON.parse(
-    JSON.stringify(elementsSkeleton),
-  );
+  const elements = cloneJSON(elementsSkeleton);
   const elementStore = new ElementStore();
   const elementsWithIds = new Map<string, ExcalidrawElementSkeleton>();
   const oldToNewElementIdMap = new Map<string, string>();
@@ -548,7 +574,16 @@ export const convertToExcalidrawElements = (
         });
         break;
       }
+      case "magicframe": {
+        excalidrawElement = newMagicFrameElement({
+          x: 0,
+          y: 0,
+          ...element,
+        });
+        break;
+      }
       case "freedraw":
+      case "iframe":
       case "embeddable": {
         excalidrawElement = element;
         break;
@@ -657,7 +692,7 @@ export const convertToExcalidrawElements = (
   // need to calculate coordinates and dimensions of frame which is possibe after all
   // frame children are processed.
   for (const [id, element] of elementsWithIds) {
-    if (element.type !== "frame") {
+    if (element.type !== "frame" && element.type !== "magicframe") {
       continue;
     }
     const frame = elementStore.getElement(id);
