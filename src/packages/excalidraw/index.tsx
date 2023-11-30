@@ -1,4 +1,4 @@
-import React, { useEffect, forwardRef } from "react";
+import React, { useEffect } from "react";
 import { InitializeApp } from "../../components/InitializeApp";
 import App from "../../components/App";
 import { isShallowEqual } from "../../utils";
@@ -6,7 +6,7 @@ import { isShallowEqual } from "../../utils";
 import "../../css/app.scss";
 import "../../css/styles.scss";
 
-import { AppProps, ExcalidrawAPIRefValue, ExcalidrawProps } from "../../types";
+import { AppProps, ExcalidrawProps } from "../../types";
 import { defaultLang } from "../../i18n";
 import { DEFAULT_UI_OPTIONS } from "../../constants";
 import { Provider } from "jotai";
@@ -20,7 +20,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
   const {
     onChange,
     initialData,
-    excalidrawRef,
+    excalidrawAPI,
     isCollaborating = false,
     onPointerUpdate,
     renderTopRightUI,
@@ -44,6 +44,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     children,
     validateEmbeddable,
     renderEmbeddable,
+    aiEnabled,
   } = props;
 
   const canvasActions = props.UIOptions?.canvasActions;
@@ -55,6 +56,9 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     canvasActions: {
       ...DEFAULT_UI_OPTIONS.canvasActions,
       ...canvasActions,
+    },
+    tools: {
+      image: props.UIOptions?.tools?.image ?? true,
     },
   };
 
@@ -95,7 +99,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
         <App
           onChange={onChange}
           initialData={initialData}
-          excalidrawRef={excalidrawRef}
+          excalidrawAPI={excalidrawAPI}
           isCollaborating={isCollaborating}
           onPointerUpdate={onPointerUpdate}
           renderTopRightUI={renderTopRightUI}
@@ -119,6 +123,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           onScrollChange={onScrollChange}
           validateEmbeddable={validateEmbeddable}
           renderEmbeddable={renderEmbeddable}
+          aiEnabled={aiEnabled !== false}
         >
           {children}
         </App>
@@ -127,12 +132,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
   );
 };
 
-type PublicExcalidrawProps = Omit<ExcalidrawProps, "forwardedRef">;
-
-const areEqual = (
-  prevProps: PublicExcalidrawProps,
-  nextProps: PublicExcalidrawProps,
-) => {
+const areEqual = (prevProps: ExcalidrawProps, nextProps: ExcalidrawProps) => {
   // short-circuit early
   if (prevProps.children !== nextProps.children) {
     return false;
@@ -189,12 +189,7 @@ const areEqual = (
   return isUIOptionsSame && isShallowEqual(prev, next);
 };
 
-const forwardedRefComp = forwardRef<
-  ExcalidrawAPIRefValue,
-  PublicExcalidrawProps
->((props, ref) => <ExcalidrawBase {...props} excalidrawRef={ref} />);
-
-export const Excalidraw = React.memo(forwardedRefComp, areEqual);
+export const Excalidraw = React.memo(ExcalidrawBase, areEqual);
 Excalidraw.displayName = "Excalidraw";
 
 export {
@@ -251,9 +246,12 @@ export { WelcomeScreen };
 export { LiveCollaborationTrigger };
 
 export { DefaultSidebar } from "../../components/DefaultSidebar";
+export { TTDDialog } from "../../components/TTDDialog/TTDDialog";
+export { TTDDialogTrigger } from "../../components/TTDDialog/TTDDialogTrigger";
 
 export { normalizeLink } from "../../data/url";
 export { convertToExcalidrawElements } from "../../data/transform";
+export { getCommonBounds } from "../../element/bounds";
 
 export {
   elementsOverlappingBBox,

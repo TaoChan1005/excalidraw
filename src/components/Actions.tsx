@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ActionManager } from "../actions/manager";
 import { getNonDeletedElements } from "../element";
-import { ExcalidrawElement } from "../element/types";
+import { ExcalidrawElement, ExcalidrawElementType } from "../element/types";
 import { t } from "../i18n";
 import { useDevice } from "../components/App";
 import {
@@ -13,7 +13,7 @@ import {
   hasStrokeWidth,
 } from "../scene";
 import { SHAPES } from "../shapes";
-import { AppClassProperties, UIAppState, Zoom } from "../types";
+import { AppClassProperties, AppProps, UIAppState, Zoom } from "../types";
 import { capitalizeString, isTransparent } from "../utils";
 import Stack from "./Stack";
 import { ToolButton } from "./ToolButton";
@@ -36,8 +36,11 @@ import {
   frameToolIcon,
   mermaidLogoIcon,
   laserPointerToolIcon,
+  OpenAIIcon,
+  MagicIcon,
 } from "./icons";
 import { KEYS } from "../keys";
+import { useTunnels } from "../context/tunnels";
 
 export const SelectedShapeActions = ({
   appState,
@@ -79,7 +82,8 @@ export const SelectedShapeActions = ({
   const showLinkIcon =
     targetElements.length === 1 || isSingleElementBoundContainer;
 
-  let commonSelectedType: string | null = targetElements[0]?.type || null;
+  let commonSelectedType: ExcalidrawElementType | null =
+    targetElements[0]?.type || null;
 
   for (const element of targetElements) {
     if (element.type !== commonSelectedType) {
@@ -94,7 +98,8 @@ export const SelectedShapeActions = ({
         {((hasStrokeColor(appState.activeTool.type) &&
           appState.activeTool.type !== "image" &&
           commonSelectedType !== "image" &&
-          commonSelectedType !== "frame") ||
+          commonSelectedType !== "frame" &&
+          commonSelectedType !== "magicframe") ||
           targetElements.some((element) => hasStrokeColor(element.type))) &&
           renderAction("changeStrokeColor")}
       </div>
@@ -218,10 +223,12 @@ export const ShapesSwitcher = ({
   activeTool,
   appState,
   app,
+  UIOptions,
 }: {
   activeTool: UIAppState["activeTool"];
   appState: UIAppState;
   app: AppClassProperties;
+  UIOptions: AppProps["UIOptions"];
 }) => {
   const [isExtraToolsMenuOpen, setIsExtraToolsMenuOpen] = useState(false);
 
@@ -229,9 +236,19 @@ export const ShapesSwitcher = ({
   const laserToolSelected = activeTool.type === "laser";
   const embeddableToolSelected = activeTool.type === "embeddable";
 
+  const { TTDDialogTriggerTunnel } = useTunnels();
+
   return (
     <>
       {SHAPES.map(({ value, icon, key, numericKey, fillable }, index) => {
+        if (
+          UIOptions.tools?.[
+            value as Extract<typeof value, keyof AppProps["UIOptions"]["tools"]>
+          ] === false
+        ) {
+          return null;
+        }
+
         const label = t(`toolBar.${value}`);
         const letter =
           key && capitalizeString(typeof key === "string" ? key : key[0]);
@@ -321,13 +338,43 @@ export const ShapesSwitcher = ({
           >
             {t("toolBar.laser")}
           </DropdownMenu.Item>
+          <div style={{ margin: "6px 0", fontSize: 14, fontWeight: 600 }}>
+            Generate
+          </div>
+          {app.props.aiEnabled !== false && <TTDDialogTriggerTunnel.Out />}
           <DropdownMenu.Item
-            onSelect={() => app.setOpenDialog("mermaid")}
+            onSelect={() => app.setOpenDialog({ name: "ttd", tab: "mermaid" })}
             icon={mermaidLogoIcon}
             data-testid="toolbar-embeddable"
           >
             {t("toolBar.mermaidToExcalidraw")}
           </DropdownMenu.Item>
+          {app.props.aiEnabled !== false && (
+            <>
+              <DropdownMenu.Item
+                onSelect={() => app.onMagicframeToolSelect()}
+                icon={MagicIcon}
+                data-testid="toolbar-magicframe"
+              >
+                {t("toolBar.magicframe")}
+                <DropdownMenu.Item.Badge>AI</DropdownMenu.Item.Badge>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => {
+                  trackEvent("ai", "open-settings", "d2c");
+                  app.setOpenDialog({
+                    name: "settings",
+                    source: "settings",
+                    tab: "diagram-to-code",
+                  });
+                }}
+                icon={OpenAIIcon}
+                data-testid="toolbar-magicSettings"
+              >
+                {t("toolBar.magicSettings")}
+              </DropdownMenu.Item>
+            </>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu>
     </>

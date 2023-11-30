@@ -80,6 +80,7 @@ export enum EVENT {
   EXCALIDRAW_LINK = "excalidraw-link",
   MENU_ITEM_SELECT = "menu.itemSelect",
   MESSAGE = "message",
+  FULLSCREENCHANGE = "fullscreenchange",
 }
 
 export const YOUTUBE_STATES = {
@@ -105,6 +106,7 @@ export const FONT_FAMILY = {
   Virgil: 1,
   Helvetica: 2,
   Cascadia: 3,
+  Assistant: 4,
 };
 
 export const THEME = {
@@ -114,13 +116,18 @@ export const THEME = {
 
 export const FRAME_STYLE = {
   strokeColor: "#bbb" as ExcalidrawElement["strokeColor"],
-  strokeWidth: 1 as ExcalidrawElement["strokeWidth"],
+  strokeWidth: 2 as ExcalidrawElement["strokeWidth"],
   strokeStyle: "solid" as ExcalidrawElement["strokeStyle"],
   fillStyle: "solid" as ExcalidrawElement["fillStyle"],
   roughness: 0 as ExcalidrawElement["roughness"],
   roundness: null as ExcalidrawElement["roundness"],
   backgroundColor: "transparent" as ExcalidrawElement["backgroundColor"],
   radius: 8,
+  nameOffsetY: 3,
+  nameColorLightTheme: "#999999",
+  nameColorDarkTheme: "#7a7a7a",
+  nameFontSize: 14,
+  nameLineHeight: 1.25,
 };
 
 export const WINDOWS_EMOJI_FALLBACK_FONT = "Segoe UI Emoji";
@@ -215,6 +222,9 @@ export const DEFAULT_UI_OPTIONS: AppProps["UIOptions"] = {
     saveToActiveFile: true,
     toggleTheme: null,
     saveAsImage: true,
+  },
+  tools: {
+    image: true,
   },
 };
 
@@ -335,4 +345,33 @@ export const DEFAULT_SIDEBAR = {
   defaultTab: LIBRARY_SIDEBAR_TAB,
 } as const;
 
-export const LIBRARY_DISABLED_TYPES = new Set(["embeddable", "image"] as const);
+export const LIBRARY_DISABLED_TYPES = new Set([
+  "iframe",
+  "embeddable",
+  "image",
+] as const);
+
+// use these constants to easily identify reference sites
+export const TOOL_TYPE = {
+  selection: "selection",
+  rectangle: "rectangle",
+  diamond: "diamond",
+  ellipse: "ellipse",
+  arrow: "arrow",
+  line: "line",
+  freedraw: "freedraw",
+  text: "text",
+  image: "image",
+  eraser: "eraser",
+  hand: "hand",
+  frame: "frame",
+  magicframe: "magicframe",
+  embeddable: "embeddable",
+  laser: "laser",
+} as const;
+
+export const EDITOR_LS_KEYS = {
+  OAI_API_KEY: "excalidraw-oai-api-key",
+  // legacy naming (non)scheme
+  PUBLISH_LIBRARY: "publish-library-data",
+} as const;

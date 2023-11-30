@@ -1,7 +1,12 @@
 import clsx from "clsx";
 import React from "react";
 import { ActionManager } from "../actions/manager";
-import { CLASSES, DEFAULT_SIDEBAR, LIBRARY_SIDEBAR_WIDTH } from "../constants";
+import {
+  CLASSES,
+  DEFAULT_SIDEBAR,
+  LIBRARY_SIDEBAR_WIDTH,
+  TOOL_TYPE,
+} from "../constants";
 import { showSelectedShapeActions } from "../element";
 import { NonDeletedExcalidrawElement } from "../element/types";
 import { Language, t } from "../i18n";
@@ -56,6 +61,8 @@ import { mutateElement } from "../element/mutateElement";
 import { ShapeCache } from "../scene/ShapeCache";
 import Scene from "../scene/Scene";
 import { LaserPointerButton } from "./LaserTool/LaserPointerButton";
+import { MagicSettings } from "./MagicSettings";
+import { TTDDialog } from "./TTDDialog/TTDDialog";
 
 interface LayerUIProps {
   actionManager: ActionManager;
@@ -66,7 +73,7 @@ interface LayerUIProps {
   elements: readonly NonDeletedExcalidrawElement[];
   onLockToggle: () => void;
   onHandToolToggle: () => void;
-  onPenModeToggle: () => void;
+  onPenModeToggle: AppClassProperties["togglePenMode"];
   showExitZenModeBtn: boolean;
   langCode: Language["code"];
   renderTopRightUI?: ExcalidrawProps["renderTopRightUI"];
@@ -77,6 +84,14 @@ interface LayerUIProps {
   children?: React.ReactNode;
   app: AppClassProperties;
   isCollaborating: boolean;
+  openAIKey: string | null;
+  isOpenAIKeyPersisted: boolean;
+  onOpenAIAPIKeyChange: (apiKey: string, shouldPersist: boolean) => void;
+  onMagicSettingsConfirm: (
+    apiKey: string,
+    shouldPersist: boolean,
+    source: "tool" | "generation" | "settings",
+  ) => void;
 }
 
 const DefaultMainMenu: React.FC<{
@@ -133,6 +148,10 @@ const LayerUI = ({
   children,
   app,
   isCollaborating,
+  openAIKey,
+  isOpenAIKeyPersisted,
+  onOpenAIAPIKeyChange,
+  onMagicSettingsConfirm,
 }: LayerUIProps) => {
   const device = useDevice();
   const tunnels = useInitializeTunnels();
@@ -161,7 +180,10 @@ const LayerUI = ({
   };
 
   const renderImageExportDialog = () => {
-    if (!UIOptions.canvasActions.saveAsImage) {
+    if (
+      !UIOptions.canvasActions.saveAsImage ||
+      appState.openDialog?.name !== "imageExport"
+    ) {
       return null;
     }
 
@@ -255,7 +277,7 @@ const LayerUI = ({
                           <PenModeButton
                             zenModeEnabled={appState.zenModeEnabled}
                             checked={appState.penMode}
-                            onChange={onPenModeToggle}
+                            onChange={() => onPenModeToggle(null)}
                             title={t("toolBar.penMode")}
                             penDetected={appState.penDetected}
                           />
@@ -277,6 +299,7 @@ const LayerUI = ({
                           <ShapesSwitcher
                             appState={appState}
                             activeTool={appState.activeTool}
+                            UIOptions={UIOptions}
                             app={app}
                           />
                         </Stack.Row>
@@ -291,9 +314,11 @@ const LayerUI = ({
                         >
                           <LaserPointerButton
                             title={t("toolBar.laser")}
-                            checked={appState.activeTool.type === "laser"}
+                            checked={
+                              appState.activeTool.type === TOOL_TYPE.laser
+                            }
                             onChange={() =>
-                              app.setActiveTool({ type: "laser" })
+                              app.setActiveTool({ type: TOOL_TYPE.laser })
                             }
                             isMobile
                           />
@@ -372,6 +397,7 @@ const LayerUI = ({
         {t("toolBar.library")}
       </DefaultSidebar.Trigger>
       <DefaultOverwriteConfirmDialog />
+      {appState.openDialog?.name === "ttd" && <TTDDialog __fallback />}
       {/* ------------------------------------------------------------------ */}
 
       {appState.isLoading && <LoadingMessage delay={250} />}
@@ -428,8 +454,27 @@ const LayerUI = ({
           }}
         />
       )}
-      {appState.openDialog === "help" && (
+      {appState.openDialog?.name === "help" && (
         <HelpDialog
+          onClose={() => {
+            setAppState({ openDialog: null });
+          }}
+        />
+      )}
+      {appState.openDialog?.name === "settings" && (
+        <MagicSettings
+          openAIKey={openAIKey}
+          isPersisted={isOpenAIKeyPersisted}
+          onChange={onOpenAIAPIKeyChange}
+          onConfirm={(apiKey, shouldPersist) => {
+            const source =
+              appState.openDialog?.name === "settings"
+                ? appState.openDialog?.source
+                : "settings";
+            setAppState({ openDialog: null }, () => {
+              onMagicSettingsConfirm(apiKey, shouldPersist, source);
+            });
+          }}
           onClose={() => {
             setAppState({ openDialog: null });
           }}
@@ -467,6 +512,7 @@ const LayerUI = ({
           renderSidebars={renderSidebars}
           device={device}
           renderWelcomeScreen={renderWelcomeScreen}
+          UIOptions={UIOptions}
         />
       )}
       {!device.editor.isMobile && (

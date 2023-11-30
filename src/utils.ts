@@ -6,11 +6,7 @@ import {
   isDarwin,
   WINDOWS_EMOJI_FALLBACK_FONT,
 } from "./constants";
-import {
-  FontFamilyValues,
-  FontString,
-  NonDeletedExcalidrawElement,
-} from "./element/types";
+import { FontFamilyValues, FontString } from "./element/types";
 import { ActiveTool, AppState, ToolType, Zoom } from "./types";
 import { unstable_batchedUpdates } from "react-dom";
 import { ResolutionType } from "./utility-types";
@@ -77,7 +73,9 @@ export const isWritableElement = (
   target instanceof HTMLBRElement || // newline in wysiwyg
   target instanceof HTMLTextAreaElement ||
   (target instanceof HTMLInputElement &&
-    (target.type === "text" || target.type === "number"));
+    (target.type === "text" ||
+      target.type === "number" ||
+      target.type === "password"));
 
 export const getFontFamilyString = ({
   fontFamily,
@@ -821,24 +819,18 @@ export const composeEventHandlers = <E>(
   };
 };
 
-export const isOnlyExportingSingleFrame = (
-  elements: readonly NonDeletedExcalidrawElement[],
-) => {
-  const frames = elements.filter((element) => element.type === "frame");
-
-  return (
-    frames.length === 1 &&
-    elements.every(
-      (element) => element.type === "frame" || element.frameId === frames[0].id,
-    )
-  );
-};
-
+/**
+ * supply `null` as message if non-never value is valid, you just need to
+ * typecheck against it
+ */
 export const assertNever = (
   value: never,
-  message: string,
+  message: string | null,
   softAssert?: boolean,
 ): never => {
+  if (!message) {
+    return value;
+  }
   if (softAssert) {
     console.error(message);
     return value;
@@ -930,4 +922,10 @@ export const isMemberOf = <T extends string>(
     : "includes" in collection
     ? collection.includes(value as T)
     : collection.hasOwnProperty(value);
+};
+
+export const cloneJSON = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+
+export const isFiniteNumber = (value: any): value is number => {
+  return typeof value === "number" && Number.isFinite(value);
 };
