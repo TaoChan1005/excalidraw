@@ -49,7 +49,7 @@ const _loadFirebase = async () => {
   const firebase = (
     await import(/* webpackChunkName: "firebase" */ "firebase/app")
   ).default;
-  const storage = process.env.STORAGE_BACKEND;
+  const storage = import.meta.env.VITE_APP_STORAGE_BACKEND;
   const useFirebase = storage === "firebase";
 
   if (useFirebase && !isFirebaseInitialized) {
