@@ -6,6 +6,7 @@
 !.prettierrc
 !package.json
 !public/
-!src/
+!packages/
 !tsconfig.json
 !yarn.lock
+!excalidraw-app/
