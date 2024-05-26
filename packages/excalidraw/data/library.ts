@@ -1,5 +1,5 @@
 import { loadLibraryFromBlob } from "./blob";
-import {
+import type {
   LibraryItems,
   LibraryItem,
   ExcalidrawImperativeAPI,
@@ -10,7 +10,7 @@ import { restoreLibraryItems } from "./restore";
 import type App from "../components/App";
 import { atom } from "jotai";
 import { jotaiStore } from "../jotai";
-import { ExcalidrawElement } from "../element/types";
+import type { ExcalidrawElement } from "../element/types";
 import { getCommonBoundingBox } from "../element/bounds";
 import { AbortError } from "../errors";
 import { t } from "../i18n";
@@ -31,7 +31,7 @@ import {
   promiseTry,
   resolvablePromise,
 } from "../utils";
-import { MaybePromise } from "../utility-types";
+import type { MaybePromise } from "../utility-types";
 import { Emitter } from "../emitter";
 import { Queue } from "../queue";
 import { hashElementsVersion, hashString } from "../element";
@@ -51,6 +51,8 @@ const onLibraryUpdateEmitter = new Emitter<
   [update: LibraryUpdate, libraryItems: LibraryItems]
 >();
 
+export type LibraryAdatapterSource = "load" | "save";
+
 export interface LibraryPersistenceAdapter {
   /**
    * Should load data that were previously saved into the database using the
@@ -61,12 +63,10 @@ export interface LibraryPersistenceAdapter {
    */
   load(metadata: {
     /**
-     * Priority 1 indicates we're loading latest data with intent
-     * to reconcile with before save.
-     * Priority 2 indicates we're loading for read-only purposes, so
-     * host app can implement more aggressive caching strategy.
+     * Indicates whether we're loading data for save purposes, or reading
+     * purposes, in which case host app can implement more aggressive caching.
      */
-    priority: 1 | 2;
+    source: LibraryAdatapterSource;
   }): MaybePromise<{ libraryItems: LibraryItems_anyVersion } | null>;
   /** Should persist to the database as is (do no change the data structure). */
   save(libraryData: LibraryPersistedData): MaybePromise<void>;
@@ -487,13 +487,13 @@ class AdapterTransaction {
 
   static async getLibraryItems(
     adapter: LibraryPersistenceAdapter,
-    priority: 1 | 2,
+    source: LibraryAdatapterSource,
     _queue = true,
   ): Promise<LibraryItems> {
     const task = () =>
       new Promise<LibraryItems>(async (resolve, reject) => {
         try {
-          const data = await adapter.load({ priority });
+          const data = await adapter.load({ source });
           resolve(restoreLibraryItems(data?.libraryItems || [], "published"));
         } catch (error: any) {
           reject(error);
@@ -523,8 +523,8 @@ class AdapterTransaction {
     this.adapter = adapter;
   }
 
-  getLibraryItems(priority: 1 | 2) {
-    return AdapterTransaction.getLibraryItems(this.adapter, priority, false);
+  getLibraryItems(source: LibraryAdatapterSource) {
+    return AdapterTransaction.getLibraryItems(this.adapter, source, false);
   }
 }
 
@@ -551,7 +551,7 @@ const persistLibraryUpdate = async (
 
     return await AdapterTransaction.run(adapter, async (transaction) => {
       const nextLibraryItemsMap = arrayToMap(
-        await transaction.getLibraryItems(1),
+        await transaction.getLibraryItems("save"),
       );
 
       for (const [id] of update.deletedItems) {
@@ -765,25 +765,25 @@ export const useHandleLibrary = (
         initDataPromise.resolve(
           promiseTry(migrationAdapter.load)
             .then(async (libraryData) => {
+              let restoredData: LibraryItems | null = null;
               try {
                 // if no library data to migrate, assume no migration needed
                 // and skip persisting to new data store, as well as well
                 // clearing the old store via `migrationAdapter.clear()`
                 if (!libraryData) {
-                  return AdapterTransaction.getLibraryItems(adapter, 2);
+                  return AdapterTransaction.getLibraryItems(adapter, "load");
                 }
+
+                restoredData = restoreLibraryItems(
+                  libraryData.libraryItems || [],
+                  "published",
+                );
 
                 // we don't queue this operation because it's running inside
                 // a promise that's running inside Library update queue itself
                 const nextItems = await persistLibraryUpdate(
                   adapter,
-                  createLibraryUpdate(
-                    [],
-                    restoreLibraryItems(
-                      libraryData.libraryItems || [],
-                      "published",
-                    ),
-                  ),
+                  createLibraryUpdate([], restoredData),
                 );
                 try {
                   await migrationAdapter.clear();
@@ -798,20 +798,20 @@ export const useHandleLibrary = (
                 console.error(
                   `couldn't migrate legacy library data: ${error.message}`,
                 );
-                // migration failed, load empty library
-                return [];
+                // migration failed, load data from previous store, if any
+                return restoredData;
               }
             })
             // errors caught during `migrationAdapter.load()`
             .catch((error: any) => {
               console.error(`error during library migration: ${error.message}`);
               // as a default, load latest library from current data source
-              return AdapterTransaction.getLibraryItems(adapter, 2);
+              return AdapterTransaction.getLibraryItems(adapter, "load");
             }),
         );
       } else {
         initDataPromise.resolve(
-          promiseTry(AdapterTransaction.getLibraryItems, adapter, 2),
+          promiseTry(AdapterTransaction.getLibraryItems, adapter, "load"),
         );
       }
 

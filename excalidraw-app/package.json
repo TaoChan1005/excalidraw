@@ -26,6 +26,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "vite-plugin-html": "3.2.2"
     "socket.io-client": "4.7.2"
   },
   "devDependencies":{

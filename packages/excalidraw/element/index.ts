@@ -1,4 +1,4 @@
-import {
+import type {
   ExcalidrawElement,
   NonDeletedExcalidrawElement,
   NonDeleted,
@@ -9,7 +9,6 @@ import { isLinearElementType } from "./typeChecks";
 export {
   newElement,
   newTextElement,
-  updateTextElement,
   refreshTextDimensions,
   newLinearElement,
   newImageElement,
@@ -29,10 +28,6 @@ export {
   getTransformHandlesFromCoords,
   getTransformHandles,
 } from "./transformHandles";
-export {
-  hitTest,
-  isHittingElementBoundingBoxWithoutHittingElement,
-} from "./collision";
 export {
   resizeTest,
   getCursorForResizingElement,
