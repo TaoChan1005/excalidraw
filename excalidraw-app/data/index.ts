@@ -40,7 +40,6 @@ import { encodeFilesForUpload } from "./FileManager";
 import { getStorageBackend } from "./config";
 export type SyncableExcalidrawElement = OrderedExcalidrawElement &
   MakeBrand<"SyncableExcalidrawElement">;
-};
 
 export const isSyncableElement = (
   element: OrderedExcalidrawElement,

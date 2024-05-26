@@ -289,7 +289,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   ) => {
     try {
       const storageBackend = await getStorageBackend();
-      const savedData = await storageBackend.saveToStorageBackend(
+      const storedElements = await storageBackend.saveToStorageBackend(
         this.portal,
         syncableElements,
         this.excalidrawAPI.getAppState(),

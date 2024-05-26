@@ -10,9 +10,10 @@ import {
     IV_LENGTH_BYTES
 } from "../../packages/excalidraw/data/encryption";
 import { restoreElements } from "../../packages/excalidraw/data/restore";
-import { getSceneVersion } from "../../packages/excalidraw/element";
+import { hashElementsVersion } from "../../packages/excalidraw/element";
 import {
     ExcalidrawElement,
+    OrderedExcalidrawElement,
     FileId,
 } from "../../packages/excalidraw/element/types";
 import {
@@ -22,7 +23,7 @@ import {
     DataURL,
 } from "../../packages/excalidraw/types";
 import Portal from "../collab/Portal";
-import { reconcileElements } from "../collab/reconciliation";
+import { reconcileElements } from "../../packages/excalidraw";
 import { StoredScene } from "./StorageBackend";
 // import { SocketIOClient } from '../../packages/excalidraw/socket.io-client';
 import { Socket } from 'socket.io-client';
@@ -47,7 +48,7 @@ export const isSavedToHttpStorage = (
     elements: readonly ExcalidrawElement[],
 ): boolean => {
     if (portal.socket && portal.roomId && portal.roomKey) {
-        const sceneVersion = getSceneVersion(elements);
+        const sceneVersion = hashElementsVersion(elements);
 
         return httpStorageSceneVersionCache.get(portal.socket) === sceneVersion;
     }
@@ -73,7 +74,7 @@ export const saveToHttpStorage = async (
         return false;
     }
 
-    const sceneVersion = getSceneVersion(elements);
+    const sceneVersion = hashElementsVersion(elements);
     const getResponse = await fetch(
         `${HTTP_STORAGE_BACKEND_URL}/rooms/${roomId}`,
     );
@@ -130,7 +131,7 @@ export const loadFromHttpStorage = async (
     const elements = await getElementsFromBuffer(buffer, roomKey);
 
     if (socket) {
-        httpStorageSceneVersionCache.set(socket, getSceneVersion(elements));
+        httpStorageSceneVersionCache.set(socket, hashElementsVersion(elements));
     }
 
     return restoreElements(elements, null);
