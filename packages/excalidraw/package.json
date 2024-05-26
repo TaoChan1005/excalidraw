@@ -70,6 +70,7 @@
     "fractional-indexing": "3.2.0",
     "fuzzy": "0.1.3",
     "image-blob-reduce": "3.0.1",
+    "socket.io-client": "4.7.2",
     "jotai": "1.13.1",
     "lodash.throttle": "4.1.1",
     "nanoid": "3.3.3",
@@ -84,6 +85,7 @@
     "pwacompat": "2.0.17",
     "roughjs": "4.6.4",
     "sass": "1.51.0",
+    
     "tunnel-rat": "0.1.2"
   },
   "devDependencies": {

@@ -35,10 +35,12 @@ import {
   ROOM_ID_BYTES,
 } from "../app_constants";
 import { encodeFilesForUpload } from "./FileManager";
-import { saveFilesToFirebase } from "./firebase";
 
+// import { saveFilesToFirebase } from "./firebase";
+import { getStorageBackend } from "./config";
 export type SyncableExcalidrawElement = OrderedExcalidrawElement &
   MakeBrand<"SyncableExcalidrawElement">;
+};
 
 export const isSyncableElement = (
   element: OrderedExcalidrawElement,
@@ -80,13 +82,13 @@ export type SocketUpdateDataSource = {
   SCENE_INIT: {
     type: WS_SUBTYPES.INIT;
     payload: {
-      elements: readonly ExcalidrawElement[];
+      elements: readonly SyncableExcalidrawElement[];
     };
   };
   SCENE_UPDATE: {
     type: WS_SUBTYPES.UPDATE;
     payload: {
-      elements: readonly ExcalidrawElement[];
+      elements: readonly SyncableExcalidrawElement[];
     };
   };
   MOUSE_LOCATION: {
@@ -122,7 +124,7 @@ export type SocketUpdateDataIncoming =
 
 export type SocketUpdateData =
   SocketUpdateDataSource[keyof SocketUpdateDataSource] & {
-    _brand: "socketUpdateData";
+    MakeBrand: "socketUpdateData";
   };
 
 const RE_COLLAB_LINK = /^#room=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/;
@@ -316,7 +318,9 @@ export const exportToBackend = async (
       url.hash = `json=${json.id},${encryptionKey}`;
       const urlString = url.toString();
 
-      await saveFilesToFirebase({
+      // await saveFilesToFirebase({
+      const storageBackend = await getStorageBackend();
+      await storageBackend.saveFilesToStorageBackend({
         prefix: `/files/shareLinks/${json.id}`,
         files: filesToUpload,
       });
